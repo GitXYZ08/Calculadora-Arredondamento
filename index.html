@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Arredondamentos Monetários</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .valor-row:nth-child(even) { background-color: #f9fafb; }
+        .input-focus:focus { outline: 2px solid #3b82f6; border-color: transparent; }
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        
+        .btn-remove {
+            color: #ef4444;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+        .btn-remove:hover {
+            background-color: #fee2e2;
+            transform: scale(1.1);
+        }
+
+        #toast {
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            transform: translateY(100px);
+            opacity: 0;
+        }
+        #toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8 font-sans">
+
+    <div id="confirmModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-overlay">
+        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 transform transition-all">
+            <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                    <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Limpar tudo?</h3>
+                <p class="text-sm text-gray-500 mb-6">Esta ação não pode ser desfeita. Todos os valores inseridos serão removidos permanentemente.</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeModal()" class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold transition">Cancelar</button>
+                <button onclick="confirmClearAll()" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold transition shadow-md">Sim, limpar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 pointer-events-none">
+        <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+        </svg>
+        <span class="font-medium">Lista limpa com sucesso!</span>
+    </div>
+
+    <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+        <div class="bg-blue-700 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold italic">Calculadora de "Trocos" Pro (€)</h1>
+            <p class="opacity-90 text-sm">Arredonda sempre para o próximo Euro (mesmo valores inteiros)</p>
+        </div>
+
+        <div class="p-6">
+            <div class="mb-8 p-4 border-2 border-dashed border-blue-200 rounded-lg bg-blue-50">
+                <label class="block text-sm font-semibold text-blue-800 mb-2">
+                    Entrada Rápida (Ex: 20€ 15,50 4,99€):
+                </label>
+                <div class="flex gap-2">
+                    <input type="text" id="bulkInput" placeholder="Cole aqui os valores separados por espaço" 
+                           class="flex-1 p-3 border border-blue-300 rounded-lg input-focus shadow-sm text-lg">
+                    <button onclick="processBulkInput()" 
+                            class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition font-bold shadow-md">
+                        Adicionar
+                    </button>
+                </div>
+                <p class="text-xs text-blue-600 mt-2 italic font-medium">
+                    * Nota: Se introduzir "20", o arredondamento será "1,00" (para 21).
+                </p>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200 text-gray-600 text-xs uppercase tracking-wider">
+                            <th class="p-3 w-16 text-center">#</th>
+                            <th class="p-3">Valor Original (€)</th>
+                            <th class="p-3">Valor (Arred.)</th>
+                            <th class="p-3 text-right">Arrendondamento</th>
+                            <th class="p-3 w-20 text-center">Remover</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaValores" class="text-gray-700">
+                    </tbody>
+                    <tfoot class="border-t-4 border-gray-200">
+                        <tr class="bg-gray-50 text-gray-700 font-semibold border-b">
+                            <td colspan="3" class="p-4 text-right">SOMA TOTAL DOS VALORES:</td>
+                            <td id="totalOriginal" class="p-4 text-right text-lg font-mono">0,00 €</td>
+                            <td></td>
+                        </tr>
+                        <tr class="bg-gray-900 text-white font-bold">
+                            <td colspan="3" class="p-5 text-right text-lg">TOTAL ARREDONDADO:</td>
+                            <td id="totalGeral" class="p-5 text-right text-2xl text-yellow-400 font-mono tracking-tight">0,00 €</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="mt-6 flex flex-wrap justify-between items-center gap-4">
+                <div class="flex gap-4">
+                    <button onclick="addRow()" class="bg-emerald-600 text-white px-5 py-2 rounded-lg hover:bg-emerald-700 font-semibold shadow transition">
+                        + Nova Linha
+                    </button>
+                    <button onclick="openModal()" class="bg-gray-200 text-gray-700 px-5 py-2 rounded-lg hover:bg-red-500 hover:text-white font-semibold transition">
+                        Limpar Tudo
+                    </button>
+                </div>
+                <div id="countIndicator" class="text-gray-400 text-sm font-medium italic">0 valores inseridos</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let valores = [];
+
+        function render() {
+            const tbody = document.getElementById('listaValores');
+            tbody.innerHTML = '';
+            let somaTrocos = 0;
+            let somaOriginais = 0;
+
+            valores.forEach((item, index) => {
+                const numStr = String(item).replace(',', '.');
+                const valorOriginal = parseFloat(numStr) || 0;
+                
+                let arredondado = 0;
+                let diferenca = 0;
+
+                if (valorOriginal > 0) {
+                    if (Number.isInteger(valorOriginal)) {
+                        arredondado = valorOriginal + 1;
+                    } else {
+                        arredondado = Math.ceil(valorOriginal);
+                    }
+                    diferenca = arredondado - valorOriginal;
+                    
+                    somaOriginais += valorOriginal;
+                    somaTrocos += Math.round(diferenca * 100) / 100;
+                }
+
+                const row = document.createElement('tr');
+                row.className = 'valor-row border-b border-gray-100 transition-colors hover:bg-blue-50';
+                row.innerHTML = `
+                    <td class="p-3 text-gray-400 text-sm text-center font-mono">${index + 1}</td>
+                    <td class="p-3">
+                        <div class="relative">
+                            <span class="absolute left-2 top-2 text-gray-400">€</span>
+                            <input type="text" value="${String(item).replace('.', ',')}" 
+                                   onchange="updateValue(${index}, this.value)"
+                                   class="w-full pl-6 pr-2 py-2 border rounded-md input-focus font-mono text-lg bg-transparent"
+                                   placeholder="0,00">
+                        </div>
+                    </td>
+                    <td class="p-3 text-gray-400 font-mono italic">${valorOriginal > 0 ? arredondado.toFixed(2).replace('.', ',') + ' €' : '-'}</td>
+                    <td class="p-3 text-right font-bold text-blue-700 font-mono text-lg">${diferenca.toFixed(2).replace('.', ',')} €</td>
+                    <td class="p-3 flex justify-center items-center">
+                        <button onclick="removeRow(${index})" class="btn-remove" title="Remover">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            document.getElementById('totalOriginal').innerText = somaOriginais.toLocaleString('pt-PT', { minimumFractionDigits: 2 }) + ' €';
+            document.getElementById('totalGeral').innerText = somaTrocos.toLocaleString('pt-PT', { minimumFractionDigits: 2 }) + ' €';
+            document.getElementById('countIndicator').innerText = `${valores.length} valores inseridos`;
+        }
+
+        function addRow() {
+            valores.push("");
+            render();
+        }
+
+        function updateValue(index, val) {
+            valores[index] = val.trim();
+            render();
+        }
+
+        function removeRow(index) {
+            valores.splice(index, 1);
+            render();
+        }
+
+        function openModal() {
+            if (valores.length === 0) return;
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('confirmModal').classList.add('hidden');
+        }
+
+        function confirmClearAll() {
+            valores = [];
+            closeModal();
+            render();
+            showToast();
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        function processBulkInput() {
+            const input = document.getElementById('bulkInput');
+            let text = input.value.replace(/€/g, '');
+            const rawValues = text.split(/[\s\n\r]+/).filter(v => v !== "");
+            
+            rawValues.forEach(val => {
+                let cleanVal = val.trim();
+                if (cleanVal) valores.push(cleanVal);
+            });
+
+            input.value = '';
+            render();
+        }
+
+        window.onload = () => {
+            render();
+        };
+
+        document.getElementById('bulkInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') processBulkInput();
+        });
+    </script>
+</body>
+</html>
